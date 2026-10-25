@@ -20,6 +20,7 @@ import static org.objectweb.asm.Opcodes.RETURN;
 public class MixinPlugin implements IMixinConfigPlugin {
     private boolean isFrameworkInstalled;
     private boolean isEntityModelFeaturesInstalled;
+    private boolean isLegacyEntityModelFeaturesContextPresent;
     private boolean isPunchyInstalled;
     private boolean isSableInstalled;
     private boolean isGuardVillagersInstalled;
@@ -29,9 +30,13 @@ public class MixinPlugin implements IMixinConfigPlugin {
         isFrameworkInstalled = isClassPresent("com.mrcrayfish.framework.FrameworkNeoForge")
                 || isClassPresent("com.mrcrayfish.framework.FrameworkForge")
                 || isClassPresent("com.mrcrayfish.framework.api.FrameworkAPI");
+        isLegacyEntityModelFeaturesContextPresent = getClass().getClassLoader().getResource(
+                "traben/entity_model_features/models/animation/EMFAnimationEntityContext.class") != null
+                && getClass().getClassLoader().getResource(
+                "traben/entity_model_features/EMFAnimationApi$EMFAnimationHook$AnimationContext.class") == null;
         isEntityModelFeaturesInstalled = isModLoaded("entity_model_features")
                 || isClassPresent("traben.entity_model_features.models.parts.EMFModelPartRoot")
-                && isClassPresent("traben.entity_model_features.models.animation.EMFAnimationEntityContext");
+                && isLegacyEntityModelFeaturesContextPresent;
         isPunchyInstalled = isModLoaded("punchy")
                 || isClassPresent("punchy.client.render.PunchyArmRenderer")
                 || isClassPresent("punchy.client.state.MovementStateMachine")
@@ -51,6 +56,9 @@ public class MixinPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         if (!isFrameworkInstalled) {
             return false; // this makes sure that forge's helpful mods not found screen shows up
+        }
+        if (mixinClassName.equals("top.ribs.scguns.mixin.client.compat.fa.EMFModelPartRootMixin")) {
+            return isEntityModelFeaturesInstalled && isLegacyEntityModelFeaturesContextPresent;
         }
         if (mixinClassName.startsWith("top.ribs.scguns.mixin.client.compat.fa.")) {
             return isEntityModelFeaturesInstalled;

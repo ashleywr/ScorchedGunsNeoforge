@@ -19,7 +19,6 @@ import top.ribs.scguns.client.render.pose.WeaponPose;
 import top.ribs.scguns.common.Gun;
 import top.ribs.scguns.item.GunItem;
 
-import java.lang.reflect.Method;
 
 @Pseudo
 @Mixin(targets = "tallestegg.guardvillagers.client.models.GuardModel", remap = false)
@@ -45,7 +44,7 @@ public class GuardModelGunPoseMixin {
         HumanoidModel<LivingEntity> model = (HumanoidModel<LivingEntity>) (Object) this;
 
         if (heldAnimation instanceof WeaponPose weaponPose) {
-            AimPose forwardPose = scguns$getForwardPose(weaponPose);
+            AimPose forwardPose = weaponPose.getCachedForwardPose();
             if (forwardPose != null) {
                 float aimProgress = entity instanceof Mob mob && mob.getTarget() != null ? 1.0F : 0.0F;
                 scguns$applyForwardPose(forwardPose, model.rightArm, model.leftArm, aimProgress);
@@ -54,16 +53,6 @@ public class GuardModelGunPoseMixin {
         }
 
         scguns$applyFallbackPose(model.rightArm, model.leftArm);
-    }
-
-    private static AimPose scguns$getForwardPose(WeaponPose weaponPose) {
-        try {
-            Method method = WeaponPose.class.getDeclaredMethod("getForwardPose");
-            method.setAccessible(true);
-            return (AimPose) method.invoke(weaponPose);
-        } catch (ReflectiveOperationException ignored) {
-            return null;
-        }
     }
 
     private static void scguns$applyForwardPose(AimPose forwardPose, ModelPart rightArm, ModelPart leftArm, float aimProgress) {

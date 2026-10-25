@@ -47,6 +47,12 @@ public abstract class WeaponPose implements IHeldAnimation
      */
     protected abstract AimPose getForwardPose();
 
+    /** Returns the initialized forward pose. Callers must not modify this shared pose. */
+    public final AimPose getCachedForwardPose()
+    {
+        return this.forwardPose;
+    }
+
     /**
      * Gets the pose of the player when looking directly down
      */

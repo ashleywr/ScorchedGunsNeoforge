@@ -1,5 +1,7 @@
 package top.ribs.scguns.item;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.renderer.BlockEntityWithoutLevelRenderer;
 import net.minecraft.core.Holder;
@@ -44,7 +46,8 @@ import java.util.*;
 import java.util.function.Consumer;
 
 public class GunItem extends Item implements IColored, IMeta {
-    private final WeakHashMap<CompoundTag, Gun> modifiedGunCache = new WeakHashMap<>();
+    // CustomData is immutable; weak identity keys reuse a live stack component without copying or hashing its NBT.
+    private final Cache<CustomData, Gun> modifiedGunCache = CacheBuilder.newBuilder().weakKeys().build();
     private Gun gun = new Gun();
 
     public GunItem(Item.Properties properties) {
@@ -53,6 +56,7 @@ public class GunItem extends Item implements IColored, IMeta {
 
     public void setGun(NetworkGunManager.Supplier supplier) {
         this.gun = supplier.getGun();
+        this.modifiedGunCache.invalidateAll();
     }
 
     public Gun getGun() {
@@ -253,19 +257,26 @@ public class GunItem extends Item implements IColored, IMeta {
     }
 
     public Gun getModifiedGun(ItemStack stack) {
-        CompoundTag tagCompound = getStackTag(stack);
-        if (tagCompound != null && tagCompound.contains("Gun", Tag.TAG_COMPOUND)) {
-            return this.modifiedGunCache.computeIfAbsent(tagCompound, item -> {
-                if (tagCompound.getBoolean("Custom")) {
-                    return Gun.create(tagCompound.getCompound("Gun"));
-                } else {
-                    Gun gunCopy = this.gun.copy();
-                    gunCopy.deserializeNBT(tagCompound.getCompound("Gun"));
-                    return gunCopy;
-                }
-            });
+        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+        if (data == null || data.isEmpty()) {
+            return this.gun;
         }
-        return this.gun;
+        Gun cached = this.modifiedGunCache.getIfPresent(data);
+        if (cached != null) {
+            return cached;
+        }
+        CompoundTag tagCompound = data.copyTag();
+        Gun modifiedGun = this.gun;
+        if (tagCompound.contains("Gun", Tag.TAG_COMPOUND)) {
+            if (tagCompound.getBoolean("Custom")) {
+                modifiedGun = Gun.create(tagCompound.getCompound("Gun"));
+            } else {
+                modifiedGun = this.gun.copy();
+                modifiedGun.deserializeNBT(tagCompound.getCompound("Gun"));
+            }
+        }
+        this.modifiedGunCache.put(data, modifiedGun);
+        return modifiedGun;
     }
 
     @Override

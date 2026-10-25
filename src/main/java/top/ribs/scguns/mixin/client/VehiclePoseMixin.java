@@ -18,7 +18,6 @@ import top.ribs.scguns.client.render.pose.LimbPose;
 import top.ribs.scguns.common.Gun;
 import top.ribs.scguns.event.VehicleDetectionHandler;
 import top.ribs.scguns.item.GunItem;
-import java.lang.reflect.Method;
 
 @Mixin(value = PlayerModel.class, priority = 1100)
 public class VehiclePoseMixin<T extends LivingEntity> {
@@ -58,27 +57,17 @@ public class VehiclePoseMixin<T extends LivingEntity> {
             var heldAnimation = gun.getGeneral().getGripType(stack).heldAnimation();
 
             if (heldAnimation instanceof WeaponPose weaponPose) {
-                AimPose forwardPose = getForwardPose(weaponPose);
+                AimPose forwardPose = weaponPose.getCachedForwardPose();
                 if (forwardPose != null) {
                     applyModifiedPose(forwardPose, model.rightArm, model.leftArm, aimProgress);
                     return;
                 }
             }
         } catch (Exception e) {
-            // Fallback if reflection fails
+            // Preserve a fallback for unsupported poses
         }
 
         applyFallbackPose(model.rightArm, model.leftArm, aimProgress);
-    }
-
-    private AimPose getForwardPose(WeaponPose weaponPose) {
-        try {
-            Method getForwardPoseMethod = WeaponPose.class.getDeclaredMethod("getForwardPose");
-            getForwardPoseMethod.setAccessible(true);
-            return (AimPose) getForwardPoseMethod.invoke(weaponPose);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private void applyModifiedPose(AimPose forwardPose, ModelPart rightArm, ModelPart leftArm, float aimProgress) {

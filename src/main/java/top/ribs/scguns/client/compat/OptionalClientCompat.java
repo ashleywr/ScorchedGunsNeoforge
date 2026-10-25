@@ -12,6 +12,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.player.PlayerModelPart;
@@ -20,16 +21,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import software.bernie.geckolib.cache.object.GeoBone;
 import top.ribs.scguns.Reference;
 import top.ribs.scguns.ScorchedGuns;
+import top.ribs.scguns.client.handler.AimingHandler;
+import top.ribs.scguns.common.Gun;
 import top.ribs.scguns.item.GunItem;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 public final class OptionalClientCompat {
     private static final String EMF_ANIMATION_API = "traben.entity_model_features.EMFAnimationApi";
-    private static final String EMF_ANIMATION_CONTEXT = "traben.entity_model_features.models.animation.EMFAnimationEntityContext";
-    private static Boolean entityModelFeaturesLoaded;
     private static boolean emfVariableRegistered;
 
     private static ModelPart regularRightArm;
@@ -45,10 +46,7 @@ public final class OptionalClientCompat {
     }
 
     public static boolean isEntityModelFeaturesLoaded() {
-        if (entityModelFeaturesLoaded == null) {
-            entityModelFeaturesLoaded = isClassPresent(EMF_ANIMATION_API) && isClassPresent(EMF_ANIMATION_CONTEXT);
-        }
-        return entityModelFeaturesLoaded;
+        return EntityModelFeaturesCompat.isAvailable();
     }
 
     public static void registerEntityModelFeaturesVariables() {
@@ -56,6 +54,7 @@ public final class OptionalClientCompat {
             return;
         }
         try {
+            EntityModelFeaturesCompat.registerAnimationHook();
             Class<?> api = Class.forName(EMF_ANIMATION_API, false, OptionalClientCompat.class.getClassLoader());
             Method register = api.getMethod(
                     "registerSingletonAnimationVariable",
@@ -73,7 +72,7 @@ public final class OptionalClientCompat {
             );
             emfVariableRegistered = true;
         } catch (ReflectiveOperationException | LinkageError e) {
-            ScorchedGuns.LOGGER.debug("Entity Model Features animation variable registration was skipped.", e);
+            EntityModelFeaturesCompat.disable(e);
         }
     }
 
@@ -145,16 +144,8 @@ public final class OptionalClientCompat {
     }
 
     private static boolean isScorchedGunHeldByEntityModelFeaturesContext() {
-        try {
-            Class<?> context = Class.forName(EMF_ANIMATION_CONTEXT, false, OptionalClientCompat.class.getClassLoader());
-            Method getEntity = context.getMethod("getEMFEntity");
-            Object entity = getEntity.invoke(null);
-            if (entity instanceof Player player) {
-                return isScorchedGunHeldByPlayer(player);
-            }
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-        }
-        return isScorchedGunHeldByLocalPlayer();
+        Object entity = getEntityModelFeaturesContextEntity();
+        return entity instanceof Player player && isScorchedGunHeldByPlayer(player);
     }
 
     private static boolean isSlim(LocalPlayer player) {
@@ -212,32 +203,48 @@ public final class OptionalClientCompat {
         armPart.setRotation(0.0F, 0.0F, 0.0F);
     }
 
+    public static void disableEntityModelFeaturesCompat(Throwable error) {
+        EntityModelFeaturesCompat.disable(error);
+    }
+
     public static Object getEntityModelFeaturesContextEntity() {
-        try {
-            Class<?> context = Class.forName(EMF_ANIMATION_CONTEXT, false, OptionalClientCompat.class.getClassLoader());
-            Method getEntity = context.getMethod("getEMFEntity");
-            return getEntity.invoke(null);
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return null;
-        }
+        return EntityModelFeaturesCompat.getCurrentEntity();
     }
 
     public static boolean isEntityModelFeaturesFirstPersonHand() {
-        try {
-            Class<?> context = Class.forName(EMF_ANIMATION_CONTEXT, false, OptionalClientCompat.class.getClassLoader());
-            Field field = context.getField("isFirstPersonHand");
-            return field.getBoolean(null);
-        } catch (ReflectiveOperationException | LinkageError ignored) {
-            return false;
-        }
+        return EntityModelFeaturesCompat.isLegacyFirstPersonHand();
     }
 
-    private static boolean isClassPresent(String className) {
-        try {
-            Class.forName(className, false, OptionalClientCompat.class.getClassLoader());
-            return true;
-        } catch (ClassNotFoundException | LinkageError e) {
-            return false;
+    public static void reapplyEntityModelFeaturesGunPose(Object entity, Map<String, ? extends ModelPart> parts) {
+        if (!(entity instanceof Player player)) {
+            return;
+        }
+        ItemStack stack = player.getMainHandItem();
+        if (!(stack.getItem() instanceof GunItem gunItem)) {
+            return;
+        }
+        ModelPart rightArm = parts.get("right_arm");
+        ModelPart leftArm = parts.get("left_arm");
+        ModelPart head = parts.get("head");
+        if (rightArm == null || leftArm == null || head == null) {
+            return;
+        }
+        rightArm.resetPose();
+        leftArm.resetPose();
+        float partialTick = Minecraft.getInstance().getTimer().getGameTimeDeltaPartialTick(false);
+        float aimProgress = AimingHandler.get().getAimProgress(player, partialTick);
+        Gun gun = gunItem.getModifiedGun(stack);
+        gun.getGeneral().getGripType(stack).heldAnimation()
+                .applyPlayerModelRotation(player, rightArm, leftArm, head, InteractionHand.MAIN_HAND, aimProgress);
+        copyPose(rightArm, parts.get("right_sleeve"));
+        copyPose(leftArm, parts.get("left_sleeve"));
+        copyPose(head, parts.get("hat"));
+        copyPose(head, parts.get("headwear"));
+    }
+
+    private static void copyPose(ModelPart source, ModelPart target) {
+        if (target != null) {
+            target.copyFrom(source);
         }
     }
 }

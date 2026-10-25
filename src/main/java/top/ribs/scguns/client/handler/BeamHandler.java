@@ -110,6 +110,9 @@ public class BeamHandler {
         LocalPlayer player = mc.player;
         if (player == null) return;
 
+        suppressBeamWeaponBobbing(player);
+        if (activeBeams.isEmpty()) return;
+
         PoseStack poseStack = event.getPoseStack();
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         MultiBufferSource.BufferSource bufferSource = mc.renderBuffers().bufferSource();
@@ -121,7 +124,7 @@ public class BeamHandler {
         poseStack.popPose();
     }
 
-    private static void setupRenderContext(PoseStack poseStack, float partialTicks, LocalPlayer player) {
+    private static void suppressBeamWeaponBobbing(LocalPlayer player) {
         ItemStack heldItem = player.getMainHandItem();
         if (heldItem.getItem() instanceof GunItem gunItem) {
             Gun modifiedGun = gunItem.getModifiedGun(heldItem);
@@ -132,7 +135,9 @@ public class BeamHandler {
                 player.walkDistO = 0;
             }
         }
+    }
 
+    private static void setupRenderContext(PoseStack poseStack, float partialTicks, LocalPlayer player) {
         Vec3 renderPos = calculateBasePosition(player, partialTicks);
         poseStack.pushPose();
         poseStack.translate(-renderPos.x, -renderPos.y, -renderPos.z);
@@ -167,7 +172,7 @@ public class BeamHandler {
         float originalWalkDistO = beamPlayer.walkDistO;
 
         if (heldItem.getItem() instanceof GunItem &&
-                ((GunItem) heldItem.getItem()).getModifiedGun(heldItem).getGeneral().getFireMode().equals(FireMode.BEAM)) {
+                modifiedGun.getGeneral().getFireMode().equals(FireMode.BEAM)) {
             beamPlayer.bob = 0;
             beamPlayer.oBob = 0;
             beamPlayer.walkDist = 0;
@@ -264,9 +269,6 @@ public class BeamHandler {
                 Mth.lerp(partialTicks, player.yRotO, player.getYRot())
         );
         Vec3 rightVec = lookVec.cross(upVec).normalize();
-
-        float aimProgress = AimingHandler.get().getAimProgress(player, partialTicks);
-        calculateBeamOffsets(modifiedGun, aimProgress);
 
         return basePos
                 .add(rightVec.scale(0.1))
